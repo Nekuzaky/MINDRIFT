@@ -8,6 +8,9 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 using UpsideEffects.Checkpoints;
 using UpsideEffects.Core;
 using UpsideEffects.Effects;
@@ -24,7 +27,7 @@ namespace UpsideEffects.Editor
         private const string ScenesFolder = RootFolder + "/Scenes";
         private const string SettingsFolder = RootFolder + "/Settings";
         private const string ShadersFolder = RootFolder + "/Shaders";
-        private const string ScenePath = ScenesFolder + "/UPSIDE_EFFECTS_Prototype.unity";
+        private const string GamesScenePath = "Assets/Scenes/Games.unity";
         private const string GlobalVolumeProfilePath = SettingsFolder + "/UE_GlobalPsychedelicVolumeProfile.asset";
         private const string SkyFogFallbackProfilePath = SettingsFolder + "/UE_SkyAndFogProfile.asset";
         private const string CustomPassMaterialPath = MaterialsFolder + "/M_PsychedelicCustomPass.mat";
@@ -44,12 +47,18 @@ namespace UpsideEffects.Editor
         {
             public GameManager GameManager;
             public HeightProgressionManager HeightProgressionManager;
+            public RunSessionManager RunSessionManager;
             public CheckpointManager CheckpointManager;
             public AudioManager AudioManager;
             public AudioIntensityDriver AudioIntensityDriver;
             public FirstPersonMotor FirstPersonMotor;
             public FirstPersonLook FirstPersonLook;
+            public UpsidePlayerInputRouter InputRouter;
+#if ENABLE_INPUT_SYSTEM
+            public PlayerInput PlayerInput;
+#endif
             public PlayerFallRespawn PlayerFallRespawn;
+            public GoalZone GoalZone;
             public CameraSideEffects CameraSideEffects;
             public PsychedelicVolumeController PsychedelicVolumeController;
             public PsychedelicCustomPassController PsychedelicCustomPassController;
@@ -57,6 +66,7 @@ namespace UpsideEffects.Editor
             public SideEffectUI SideEffectUI;
             public CheckpointUI CheckpointUI;
             public HUDAltitude HUDAltitude;
+            public RunHUD RunHUD;
             public Transform PlayerRoot;
             public Transform CameraRoot;
             public Camera MainCamera;
@@ -65,7 +75,7 @@ namespace UpsideEffects.Editor
             public readonly List<Vector3> RoutePoints = new List<Vector3>();
         }
 
-        [MenuItem("Tools/UPSIDE EFFECTS/Build UPSIDE EFFECTS Prototype Scene")]
+        [MenuItem("Tools/UPSIDE EFFECTS/Build Or Refresh In Games Scene")]
         public static void BuildPrototypeScene()
         {
             EnsureFoldersExist();
@@ -75,7 +85,22 @@ namespace UpsideEffects.Editor
             VolumeProfile globalVolumeProfile = CreateOrUpdateGlobalVolumeProfile();
             VolumeProfile skyAndFogProfile = LoadOrCreateSkyAndFogProfile();
 
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            Scene scene;
+            if (System.IO.File.Exists(GamesScenePath))
+            {
+                scene = EditorSceneManager.OpenScene(GamesScenePath, OpenSceneMode.Single);
+            }
+            else
+            {
+                scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            }
+
+            GameObject previousRoot = GameObject.Find("UPSIDE_EFFECTS_Prototype");
+            if (previousRoot != null)
+            {
+                UnityEngine.Object.DestroyImmediate(previousRoot);
+            }
+
             BuildContext context = new BuildContext();
 
             GameObject rootObject = new GameObject("UPSIDE_EFFECTS_Prototype");
@@ -100,13 +125,12 @@ namespace UpsideEffects.Editor
             WireReferences(context);
 
             EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.SaveScene(scene, GamesScenePath);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
-            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
 
             Selection.activeGameObject = rootObject;
-            Debug.Log($"[UPSIDE_EFFECTS] Prototype scene generated at {ScenePath}");
+            Debug.Log($"[UPSIDE_EFFECTS] Prototype scene generated in {GamesScenePath}");
         }
 
         private static void EnsureFoldersExist()
@@ -347,6 +371,7 @@ namespace UpsideEffects.Editor
             context.GameManager = CreateChild("GameManager", systemsRoot, false).gameObject.AddComponent<GameManager>();
             context.HeightProgressionManager = CreateChild("HeightProgressionManager", systemsRoot, false).gameObject.AddComponent<HeightProgressionManager>();
             context.CheckpointManager = CreateChild("CheckpointManager", systemsRoot, false).gameObject.AddComponent<CheckpointManager>();
+            context.RunSessionManager = CreateChild("RunSessionManager", systemsRoot, false).gameObject.AddComponent<RunSessionManager>();
 
             Transform audioManagerTransform = CreateChild("AudioManager", systemsRoot, false);
             AudioSource source = audioManagerTransform.gameObject.AddComponent<AudioSource>();
@@ -367,12 +392,26 @@ namespace UpsideEffects.Editor
 
             context.AudioManager = audioManagerTransform.gameObject.AddComponent<AudioManager>();
             context.AudioIntensityDriver = audioManagerTransform.gameObject.AddComponent<AudioIntensityDriver>();
+
+            if (context.AudioManager != null)
+            {
+                SerializedObject audioManagerSO = new SerializedObject(context.AudioManager);
+                SetObjectProperty(audioManagerSO, "masterLoopSource", source);
+                SetObjectProperty(audioManagerSO, "audioIntensityDriver", context.AudioIntensityDriver);
+                SetObjectProperty(audioManagerSO, "defaultLoopClip", clip);
+                SetBoolProperty(audioManagerSO, "playOnStart", true);
+                audioManagerSO.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         private static void CreatePlayerRig(BuildContext context, Transform playerRigRoot)
         {
             Transform playerRoot = CreateChild("PlayerRoot", playerRigRoot, false);
             playerRoot.position = new Vector3(0f, 2.5f, -2f);
+            if (TagExists("Player"))
+            {
+                playerRoot.gameObject.tag = "Player";
+            }
 
             CharacterController characterController = playerRoot.gameObject.AddComponent<CharacterController>();
             characterController.height = 1.82f;
@@ -383,7 +422,27 @@ namespace UpsideEffects.Editor
 
             context.FirstPersonMotor = playerRoot.gameObject.AddComponent<FirstPersonMotor>();
             context.FirstPersonLook = playerRoot.gameObject.AddComponent<FirstPersonLook>();
+            context.InputRouter = playerRoot.gameObject.AddComponent<UpsidePlayerInputRouter>();
+#if ENABLE_INPUT_SYSTEM
+            context.PlayerInput = playerRoot.gameObject.AddComponent<PlayerInput>();
+#endif
             context.PlayerFallRespawn = playerRoot.gameObject.AddComponent<PlayerFallRespawn>();
+
+#if ENABLE_INPUT_SYSTEM
+            if (context.PlayerInput != null)
+            {
+                InputActionAsset actionAsset = AssetDatabase.LoadAssetAtPath<InputActionAsset>("Assets/InputSystem_Actions.inputactions");
+                context.PlayerInput.actions = actionAsset;
+                context.PlayerInput.defaultActionMap = "Player";
+                context.PlayerInput.neverAutoSwitchControlSchemes = false;
+                context.PlayerInput.notificationBehavior = PlayerNotifications.InvokeCSharpEvents;
+
+                SerializedObject inputRouterSO = new SerializedObject(context.InputRouter);
+                SetObjectProperty(inputRouterSO, "playerInput", context.PlayerInput);
+                SetObjectProperty(inputRouterSO, "fallbackActions", actionAsset);
+                inputRouterSO.ApplyModifiedPropertiesWithoutUndo();
+            }
+#endif
 
             Transform cameraRoot = CreateChild("CameraRoot", playerRoot, false);
             cameraRoot.localPosition = new Vector3(0f, 1.62f, 0f);
@@ -585,6 +644,15 @@ namespace UpsideEffects.Editor
             context.Checkpoints.Add(CreateCheckpoint("CP_01_Low", "Low", 1, cp1Pos, checkpointsRoot, materials.GlowCyan));
             context.Checkpoints.Add(CreateCheckpoint("CP_02_Mid", "Mid", 2, cp2Pos, checkpointsRoot, materials.GlowPink));
             context.Checkpoints.Add(CreateCheckpoint("CP_03_High", "High", 3, cp3Pos, checkpointsRoot, materials.GlowPink));
+
+            Vector3 goalPosition = context.RoutePoints[^1] + new Vector3(0f, 10f, 12f);
+            GameObject goalObject = new GameObject("GoalZone");
+            goalObject.transform.SetParent(endTeaseZone, false);
+            goalObject.transform.position = goalPosition;
+            BoxCollider goalCollider = goalObject.AddComponent<BoxCollider>();
+            goalCollider.isTrigger = true;
+            goalCollider.size = new Vector3(9f, 6f, 9f);
+            context.GoalZone = goalObject.AddComponent<GoalZone>();
         }
 
         private static void CreateEffects(BuildContext context, Transform effectsRoot, VolumeProfile globalVolumeProfile, Material customPassMaterial)
@@ -714,9 +782,40 @@ namespace UpsideEffects.Editor
                 new Vector2(420f, 42f),
                 "NEURAL LOAD: 000%");
 
+            Text runTimerText = CreateUIText(
+                "RunTimerText",
+                canvasTransform,
+                font,
+                24,
+                TextAnchor.UpperCenter,
+                new Color(0.98f, 0.95f, 0.75f, 0.95f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0.5f, 1f),
+                new Vector2(0f, -26f),
+                new Vector2(460f, 56f),
+                "RUN: 00:00.000");
+
+            Text runSummaryText = CreateUIText(
+                "RunSummaryText",
+                canvasTransform,
+                font,
+                28,
+                TextAnchor.MiddleCenter,
+                new Color(0.95f, 0.98f, 1f, 1f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0.5f, 0.5f),
+                new Vector2(0f, 0f),
+                new Vector2(920f, 320f),
+                string.Empty);
+            CanvasGroup runSummaryCanvasGroup = runSummaryText.gameObject.AddComponent<CanvasGroup>();
+            runSummaryCanvasGroup.alpha = 0f;
+
             context.HUDAltitude = altitudeText.gameObject.AddComponent<HUDAltitude>();
             context.CheckpointUI = checkpointText.gameObject.AddComponent<CheckpointUI>();
             context.SideEffectUI = canvasTransform.gameObject.AddComponent<SideEffectUI>();
+            context.RunHUD = canvasTransform.gameObject.AddComponent<RunHUD>();
 
             SerializedObject hudSO = new SerializedObject(context.HUDAltitude);
             SetObjectProperty(hudSO, "altitudeTextComponent", altitudeText);
@@ -733,6 +832,12 @@ namespace UpsideEffects.Editor
             SetObjectProperty(sideEffectUiSO, "statusTextComponent", neuralLoadText);
             SetObjectProperty(sideEffectUiSO, "warningFlashImage", warningFlashImage);
             sideEffectUiSO.ApplyModifiedPropertiesWithoutUndo();
+
+            SerializedObject runHudSO = new SerializedObject(context.RunHUD);
+            SetObjectProperty(runHudSO, "timerTextComponent", runTimerText);
+            SetObjectProperty(runHudSO, "summaryTextComponent", runSummaryText);
+            SetObjectProperty(runHudSO, "summaryCanvasGroup", runSummaryCanvasGroup);
+            runHudSO.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void CreateLighting(Transform lightingRoot, VolumeProfile skyAndFogProfile, MaterialSet materials)
@@ -771,8 +876,11 @@ namespace UpsideEffects.Editor
                 SerializedObject lookSO = new SerializedObject(context.FirstPersonLook);
                 SetObjectProperty(lookSO, "yawTransform", context.PlayerRoot);
                 SetObjectProperty(lookSO, "pitchTransform", context.CameraRoot);
+                SetObjectProperty(lookSO, "inputRouter", context.InputRouter);
                 SetFloatProperty(lookSO, "mouseSensitivityX", 2.2f);
                 SetFloatProperty(lookSO, "mouseSensitivityY", 2.1f);
+                SetFloatProperty(lookSO, "gamepadLookSpeedX", 190f);
+                SetFloatProperty(lookSO, "gamepadLookSpeedY", 150f);
                 lookSO.ApplyModifiedPropertiesWithoutUndo();
             }
 
@@ -780,6 +888,7 @@ namespace UpsideEffects.Editor
             {
                 SerializedObject motorSO = new SerializedObject(context.FirstPersonMotor);
                 SetObjectProperty(motorSO, "movementReference", context.PlayerRoot);
+                SetObjectProperty(motorSO, "inputRouter", context.InputRouter);
                 SetFloatProperty(motorSO, "moveSpeed", 8.2f);
                 SetFloatProperty(motorSO, "acceleration", 32f);
                 SetFloatProperty(motorSO, "airControl", 0.45f);
@@ -809,6 +918,17 @@ namespace UpsideEffects.Editor
                 SetIntProperty(checkpointManagerSO, "defaultCheckpointIndex", 0);
                 SetObjectListProperty(checkpointManagerSO, "checkpoints", context.Checkpoints);
                 checkpointManagerSO.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            if (context.RunSessionManager != null)
+            {
+                SerializedObject runSO = new SerializedObject(context.RunSessionManager);
+                SetObjectProperty(runSO, "playerFallRespawn", context.PlayerFallRespawn);
+                SetObjectProperty(runSO, "checkpointManager", context.CheckpointManager);
+                SetObjectProperty(runSO, "goalZone", context.GoalZone);
+                SetBoolProperty(runSO, "autoStartOnPlay", true);
+                SetBoolProperty(runSO, "allowRestartWithKey", true);
+                runSO.ApplyModifiedPropertiesWithoutUndo();
             }
 
             if (context.HUDAltitude != null)
@@ -888,6 +1008,13 @@ namespace UpsideEffects.Editor
                 SetObjectProperty(gameManagerSO, "checkpointManager", context.CheckpointManager);
                 SetObjectProperty(gameManagerSO, "playerFallRespawn", context.PlayerFallRespawn);
                 gameManagerSO.ApplyModifiedPropertiesWithoutUndo();
+            }
+
+            if (context.RunHUD != null && context.RunSessionManager != null)
+            {
+                SerializedObject runHudSO = new SerializedObject(context.RunHUD);
+                SetObjectProperty(runHudSO, "runSessionManager", context.RunSessionManager);
+                runHudSO.ApplyModifiedPropertiesWithoutUndo();
             }
         }
 
@@ -1072,6 +1199,20 @@ namespace UpsideEffects.Editor
         private static float Range(System.Random random, float min, float max)
         {
             return (float)(min + (max - min) * random.NextDouble());
+        }
+
+        private static bool TagExists(string tagName)
+        {
+            string[] tags = UnityEditorInternal.InternalEditorUtility.tags;
+            for (int i = 0; i < tags.Length; i++)
+            {
+                if (string.Equals(tags[i], tagName, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void SetObjectProperty(SerializedObject serializedObject, string propertyName, UnityEngine.Object value)

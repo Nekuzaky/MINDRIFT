@@ -1,5 +1,9 @@
 using UnityEngine;
 
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
 namespace UpsideEffects.Player
 {
     public sealed class FirstPersonLook : MonoBehaviour
@@ -7,10 +11,14 @@ namespace UpsideEffects.Player
         [Header("Look References")]
         [SerializeField] private Transform yawTransform;
         [SerializeField] private Transform pitchTransform;
+        [SerializeField] private UpsidePlayerInputRouter inputRouter;
 
         [Header("Sensitivity")]
         [SerializeField] private float mouseSensitivityX = 2f;
         [SerializeField] private float mouseSensitivityY = 2f;
+        [SerializeField] private float gamepadLookSpeedX = 190f;
+        [SerializeField] private float gamepadLookSpeedY = 150f;
+        [SerializeField, Range(0f, 0.5f)] private float gamepadLookDeadzone = 0.08f;
         [SerializeField] private bool invertY;
         [SerializeField] private float smoothing = 18f;
 
@@ -38,6 +46,11 @@ namespace UpsideEffects.Player
                 pitchTransform = transform;
             }
 
+            if (inputRouter == null)
+            {
+                inputRouter = GetComponent<UpsidePlayerInputRouter>();
+            }
+
             Vector3 yawEuler = yawTransform.localEulerAngles;
             Vector3 pitchEuler = pitchTransform.localEulerAngles;
             yaw = yawEuler.y;
@@ -54,23 +67,47 @@ namespace UpsideEffects.Player
 
         private void Update()
         {
-            if (Input.GetKeyDown(unlockKey))
+            bool unlockPressed = IsUnlockPressed();
+            if (unlockPressed)
             {
                 SetCursorLock(false);
             }
 
-            if (Cursor.lockState != CursorLockMode.Locked && Input.GetMouseButtonDown(0))
+            if (Cursor.lockState != CursorLockMode.Locked && IsPointerPrimaryPressed())
             {
                 SetCursorLock(true);
             }
 
-            if (Cursor.lockState != CursorLockMode.Locked)
+            Vector2 rawLook;
+            bool pointerInput;
+            if (inputRouter != null)
+            {
+                rawLook = inputRouter.ReadLook();
+                pointerInput = inputRouter.IsLookFromPointerDevice();
+            }
+            else
+            {
+                rawLook = ReadLookFallback(out pointerInput);
+            }
+
+            if (pointerInput && Cursor.lockState != CursorLockMode.Locked)
             {
                 return;
             }
 
-            float deltaX = Input.GetAxis("Mouse X") * mouseSensitivityX;
-            float deltaY = Input.GetAxis("Mouse Y") * mouseSensitivityY * (invertY ? 1f : -1f);
+            float deltaX;
+            float deltaY;
+            if (pointerInput)
+            {
+                deltaX = rawLook.x * mouseSensitivityX;
+                deltaY = rawLook.y * mouseSensitivityY * (invertY ? 1f : -1f);
+            }
+            else
+            {
+                Vector2 filtered = rawLook.sqrMagnitude <= gamepadLookDeadzone * gamepadLookDeadzone ? Vector2.zero : rawLook;
+                deltaX = filtered.x * gamepadLookSpeedX * Time.deltaTime;
+                deltaY = filtered.y * gamepadLookSpeedY * Time.deltaTime * (invertY ? 1f : -1f);
+            }
 
             Vector2 targetInput = new Vector2(deltaX, deltaY);
             smoothedInput = Vector2.Lerp(smoothedInput, targetInput, 1f - Mathf.Exp(-smoothing * Time.deltaTime));
@@ -86,6 +123,85 @@ namespace UpsideEffects.Player
         {
             Cursor.visible = !shouldLock;
             Cursor.lockState = shouldLock ? CursorLockMode.Locked : CursorLockMode.None;
+        }
+
+        private bool IsUnlockPressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (Keyboard.current != null && TryMapKeyCode(unlockKey, out Key mappedKey))
+            {
+                var keyControl = Keyboard.current[mappedKey];
+                if (keyControl != null && keyControl.wasPressedThisFrame)
+                {
+                    return true;
+                }
+            }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetKeyDown(unlockKey);
+#else
+            return false;
+#endif
+        }
+
+        private static bool IsPointerPrimaryPressed()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            {
+                return true;
+            }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetMouseButtonDown(0);
+#else
+            return false;
+#endif
+        }
+
+        private static bool TryMapKeyCode(KeyCode keyCode, out Key key)
+        {
+            switch (keyCode)
+            {
+                case KeyCode.Escape:
+                    key = Key.Escape;
+                    return true;
+                case KeyCode.Tab:
+                    key = Key.Tab;
+                    return true;
+                case KeyCode.Space:
+                    key = Key.Space;
+                    return true;
+                case KeyCode.BackQuote:
+                    key = Key.Backquote;
+                    return true;
+                default:
+                    key = Key.None;
+                    return false;
+            }
+        }
+
+        private static Vector2 ReadLookFallback(out bool pointerInput)
+        {
+#if ENABLE_INPUT_SYSTEM
+            Vector2 mouseDelta = Mouse.current != null ? Mouse.current.delta.ReadValue() : Vector2.zero;
+            Vector2 gamepadLook = Gamepad.current != null ? Gamepad.current.rightStick.ReadValue() : Vector2.zero;
+
+            if (gamepadLook.sqrMagnitude > 0.0005f)
+            {
+                pointerInput = false;
+                return gamepadLook;
+            }
+
+            pointerInput = true;
+            return mouseDelta;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            pointerInput = true;
+            return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+#else
+            pointerInput = true;
+            return Vector2.zero;
+#endif
         }
 
         private static float NormalizePitch(float value)

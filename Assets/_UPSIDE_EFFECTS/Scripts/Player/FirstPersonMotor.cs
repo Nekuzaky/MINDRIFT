@@ -1,6 +1,10 @@
 using UnityEngine;
 using UpsideEffects.World;
 
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
 namespace UpsideEffects.Player
 {
     [RequireComponent(typeof(CharacterController))]
@@ -8,6 +12,7 @@ namespace UpsideEffects.Player
     {
         [Header("Movement")]
         [SerializeField] private Transform movementReference;
+        [SerializeField] private UpsidePlayerInputRouter inputRouter;
         [SerializeField] private float moveSpeed = 8f;
         [SerializeField] private float acceleration = 30f;
         [SerializeField, Range(0f, 1f)] private float airControl = 0.4f;
@@ -41,6 +46,11 @@ namespace UpsideEffects.Player
             if (movementReference == null)
             {
                 movementReference = transform;
+            }
+
+            if (inputRouter == null)
+            {
+                inputRouter = GetComponent<UpsidePlayerInputRouter>();
             }
         }
 
@@ -85,7 +95,8 @@ namespace UpsideEffects.Player
 
         private void UpdateTimers(float deltaTime)
         {
-            if (Input.GetButtonDown("Jump"))
+            bool jumpPressed = inputRouter != null ? inputRouter.WasJumpPressedThisFrame() : ReadJumpFallback();
+            if (jumpPressed)
             {
                 jumpBufferTimer = jumpBufferTime;
             }
@@ -106,8 +117,9 @@ namespace UpsideEffects.Player
 
         private void HandleMovement(float deltaTime)
         {
-            float inputX = Input.GetAxisRaw("Horizontal");
-            float inputZ = Input.GetAxisRaw("Vertical");
+            Vector2 inputVector = inputRouter != null ? inputRouter.ReadMove() : ReadMoveFallback();
+            float inputX = inputVector.x;
+            float inputZ = inputVector.y;
 
             Vector3 rawInput = Vector3.ClampMagnitude(new Vector3(inputX, 0f, inputZ), 1f);
             Vector3 referenceForward = movementReference.forward;
@@ -183,5 +195,191 @@ namespace UpsideEffects.Player
                 currentGroundPlatform = platform;
             }
         }
+
+        private static Vector2 ReadMoveFallback()
+        {
+#if ENABLE_INPUT_SYSTEM
+            Vector2 move = Vector2.zero;
+
+            if (Keyboard.current != null)
+            {
+                if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) move.x -= 1f;
+                if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) move.x += 1f;
+                if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) move.y -= 1f;
+                if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) move.y += 1f;
+            }
+
+            if (Gamepad.current != null)
+            {
+                move += Gamepad.current.leftStick.ReadValue();
+            }
+
+            return Vector2.ClampMagnitude(move, 1f);
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            return new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+#else
+            return Vector2.zero;
+#endif
+        }
+
+        private static bool ReadJumpFallback()
+        {
+#if ENABLE_INPUT_SYSTEM
+            bool keyboardJump = Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
+            bool gamepadJump = Gamepad.current != null && Gamepad.current.buttonSouth.wasPressedThisFrame;
+            return keyboardJump || gamepadJump;
+#elif ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetButtonDown("Jump");
+#else
+            return false;
+#endif
+        }
+    }
+
+    public sealed class UpsidePlayerInputRouter : MonoBehaviour
+    {
+        [Header("Input Source")]
+#if ENABLE_INPUT_SYSTEM
+        [SerializeField] private PlayerInput playerInput;
+        [SerializeField] private InputActionAsset fallbackActions;
+#endif
+        [SerializeField] private string actionMapName = "Player";
+        [SerializeField] private string moveActionName = "Move";
+        [SerializeField] private string lookActionName = "Look";
+        [SerializeField] private string jumpActionName = "Jump";
+
+#if ENABLE_INPUT_SYSTEM
+        private InputAction moveAction;
+        private InputAction lookAction;
+        private InputAction jumpAction;
+        private InputActionMap resolvedMap;
+        private bool mapEnabledByRouter;
+#endif
+
+        private void Awake()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (playerInput == null)
+            {
+                playerInput = GetComponent<PlayerInput>();
+            }
+#endif
+        }
+
+        private void OnEnable()
+        {
+#if ENABLE_INPUT_SYSTEM
+            ResolveActions();
+#endif
+        }
+
+        private void OnDisable()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (mapEnabledByRouter && resolvedMap != null && resolvedMap.enabled)
+            {
+                resolvedMap.Disable();
+            }
+
+            mapEnabledByRouter = false;
+#endif
+        }
+
+        public Vector2 ReadMove()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (moveAction != null)
+            {
+                return moveAction.ReadValue<Vector2>();
+            }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+#else
+            return Vector2.zero;
+#endif
+        }
+
+        public Vector2 ReadLook()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (lookAction != null)
+            {
+                return lookAction.ReadValue<Vector2>();
+            }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+#else
+            return Vector2.zero;
+#endif
+        }
+
+        public bool WasJumpPressedThisFrame()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (jumpAction != null)
+            {
+                return jumpAction.WasPressedThisFrame();
+            }
+#endif
+#if ENABLE_LEGACY_INPUT_MANAGER
+            return Input.GetButtonDown("Jump");
+#else
+            return false;
+#endif
+        }
+
+        public bool IsLookFromPointerDevice()
+        {
+#if ENABLE_INPUT_SYSTEM
+            return lookAction != null && lookAction.activeControl != null && lookAction.activeControl.device is Pointer;
+#else
+            return true;
+#endif
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        public PlayerInput GetPlayerInput()
+        {
+            return playerInput;
+        }
+
+        private void ResolveActions()
+        {
+            mapEnabledByRouter = false;
+            resolvedMap = null;
+            moveAction = null;
+            lookAction = null;
+            jumpAction = null;
+
+            InputActionMap map = null;
+            if (playerInput != null && playerInput.actions != null)
+            {
+                map = playerInput.actions.FindActionMap(actionMapName, false);
+            }
+
+            if (map == null && fallbackActions != null)
+            {
+                map = fallbackActions.FindActionMap(actionMapName, false);
+            }
+
+            if (map == null)
+            {
+                return;
+            }
+
+            resolvedMap = map;
+            moveAction = map.FindAction(moveActionName, false);
+            lookAction = map.FindAction(lookActionName, false);
+            jumpAction = map.FindAction(jumpActionName, false);
+
+            if (!map.enabled)
+            {
+                map.Enable();
+                mapEnabledByRouter = true;
+            }
+        }
+#endif
     }
 }

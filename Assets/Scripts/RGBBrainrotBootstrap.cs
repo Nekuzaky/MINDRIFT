@@ -75,6 +75,9 @@ public sealed class RGBBrainrotBootstrap : MonoBehaviour
     private float nextSceneRescanTime;
     private float speedMultiplier = 1f;
 
+    // Legacy bootstrap injection is disabled by default so scenes stay hierarchy-authored.
+    // Define RGB_BRAINROT_LEGACY_AUTOINJECT only if you explicitly want old auto-generated content.
+#if RGB_BRAINROT_LEGACY_AUTOINJECT
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Inject()
     {
@@ -86,6 +89,7 @@ public sealed class RGBBrainrotBootstrap : MonoBehaviour
         GameObject host = new("RGB Brainrot Bootstrap");
         host.AddComponent<RGBBrainrotBootstrap>();
     }
+#endif
 
     private void Awake()
     {

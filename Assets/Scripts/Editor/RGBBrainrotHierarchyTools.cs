@@ -5,7 +5,7 @@ using UnityEngine;
 
 public static class RGBBrainrotHierarchyTools
 {
-    [MenuItem("Tools/RGB Brainrot/Create Or Refresh In Hierarchy")]
+    [MenuItem("Tools/RGB Brainrot (Legacy)/Create Or Refresh In Hierarchy")]
     private static void CreateOrRefresh()
     {
         RGBBrainrotBootstrap bootstrap = Object.FindFirstObjectByType<RGBBrainrotBootstrap>();
@@ -22,7 +22,7 @@ public static class RGBBrainrotHierarchyTools
         EditorSceneManager.MarkSceneDirty(bootstrap.gameObject.scene);
     }
 
-    [MenuItem("Tools/RGB Brainrot/Clear Generated Hierarchy")]
+    [MenuItem("Tools/RGB Brainrot (Legacy)/Clear Generated Hierarchy")]
     private static void ClearGenerated()
     {
         RGBBrainrotBootstrap bootstrap = Object.FindFirstObjectByType<RGBBrainrotBootstrap>();
