@@ -16354,6 +16354,7 @@ GameObject:
   - component: {fileID: 1666756170}
   - component: {fileID: 1666756171}
   - component: {fileID: 1666756172}
+  - component: {fileID: 1666756173}
   m_Layer: 0
   m_Name: GameplayCanvas
   m_TagString: Untagged
@@ -16539,6 +16540,7 @@ MonoBehaviour:
   retryKey: 114
   menuKey: 109
   mainMenuSceneName: MainMenu
+  mainMenuSceneFallbackName: MainMenue
 --- !u!114 &1666756171
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16588,6 +16590,9 @@ MonoBehaviour:
   topRightOffset: {x: -30, y: -66}
   bubbleSize: {x: 30, y: 30}
   bubbleSpacing: 10
+  lifeSprite: {fileID: 21300000, guid: f0697c7ae09d1764faeb097465224af3, type: 3}
+  autoAssignLifeSprite: 1
+  fallbackLifeSpriteName: life
   labelColor: {r: 0.85, g: 0.96, b: 1, a: 0.92}
   activeBubbleColor: {r: 1, g: 0.22, b: 0.74, a: 0.96}
   inactiveBubbleColor: {r: 0.14, g: 0.2, b: 0.34, a: 0.42}
@@ -16597,6 +16602,27 @@ MonoBehaviour:
   pulseAmplitude: 0.18
   previewLives: 3
   previewMaxLives: 3
+--- !u!114 &1666756173
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1666756163}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e7c6e10a7e99dcc4ba81093892d631f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Mindrift.UI.GameplayPauseController
+  gameplaySceneName: Games
+  pauseSceneName: Break
+  mainMenuSceneName: MainMenu
+  mainMenuSceneFallbackName: MainMenue
+  allowPauseKey: 1
+  pauseKey: 27
+  livesSystem: {fileID: 0}
+  firstPersonMotor: {fileID: 0}
+  firstPersonLook: {fileID: 0}
 --- !u!1 &1668403504
 GameObject:
   m_ObjectHideFlags: 0

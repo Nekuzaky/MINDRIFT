@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -10,26 +11,20 @@ using Mindrift.UI;
 
 namespace Mindrift.Editor
 {
-    public static class MainMenuSceneBuilder
+    public static class PauseMenuSceneBuilder
     {
-        private const string ScenePath = "Assets/Scenes/MainMenu.unity";
+        private const string BreakScenePath = "Assets/Scenes/Break.unity";
+        private const string MainMenuScenePath = "Assets/Scenes/MainMenu.unity";
         private const string GameplayScenePath = "Assets/Scenes/Games.unity";
 
-        [MenuItem("Tools/MINDRIFT/Create Or Refresh Main Menu Scene")]
+        [MenuItem("Tools/MINDRIFT/Create Or Refresh Pause Scene")]
         public static void CreateOrRefresh()
         {
-            Scene scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
-
-            Camera mainCamera = Object.FindFirstObjectByType<Camera>();
-            if (mainCamera != null)
-            {
-                mainCamera.backgroundColor = new Color(0.03f, 0.04f, 0.08f, 1f);
-                mainCamera.clearFlags = CameraClearFlags.SolidColor;
-            }
+            Scene pauseScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             EnsureEventSystem();
 
-            GameObject canvasGO = new GameObject("MainMenuCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            GameObject canvasGO = new GameObject("PauseCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             Canvas canvas = canvasGO.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
@@ -38,48 +33,83 @@ namespace Mindrift.Editor
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.matchWidthOrHeight = 0.5f;
 
-            RectTransform rootRect = canvasGO.GetComponent<RectTransform>();
-            rootRect.anchorMin = Vector2.zero;
-            rootRect.anchorMax = Vector2.one;
-            rootRect.offsetMin = Vector2.zero;
-            rootRect.offsetMax = Vector2.zero;
+            RectTransform canvasRect = canvasGO.GetComponent<RectTransform>();
+            Stretch(canvasRect);
 
             GameObject background = CreateUIObject("Background", canvasGO.transform);
             Image bgImage = background.AddComponent<Image>();
-            bgImage.color = new Color(0.02f, 0.02f, 0.05f, 0.95f);
+            bgImage.color = new Color(0.02f, 0.03f, 0.08f, 0.88f);
             Stretch(background.GetComponent<RectTransform>());
 
-            GameObject title = CreateText("Title", canvasGO.transform, "MINDRIFT", 96, TextAnchor.MiddleCenter, new Color(0.95f, 0.95f, 1f, 1f));
+            GameObject title = CreateText("Title", canvasGO.transform, "PAUSE", 92, TextAnchor.MiddleCenter, new Color(0.95f, 0.98f, 1f, 1f));
             RectTransform titleRect = title.GetComponent<RectTransform>();
-            titleRect.anchorMin = new Vector2(0.5f, 0.78f);
-            titleRect.anchorMax = new Vector2(0.5f, 0.78f);
-            titleRect.sizeDelta = new Vector2(1100f, 150f);
+            titleRect.anchorMin = new Vector2(0.5f, 0.72f);
+            titleRect.anchorMax = new Vector2(0.5f, 0.72f);
+            titleRect.sizeDelta = new Vector2(900f, 140f);
             titleRect.anchoredPosition = Vector2.zero;
 
-            GameObject subtitle = CreateText("Subtitle", canvasGO.transform, "CLIMB INTO COGNITIVE NOISE", 28, TextAnchor.MiddleCenter, new Color(0.45f, 0.95f, 1f, 0.95f));
-            RectTransform subtitleRect = subtitle.GetComponent<RectTransform>();
-            subtitleRect.anchorMin = new Vector2(0.5f, 0.68f);
-            subtitleRect.anchorMax = new Vector2(0.5f, 0.68f);
-            subtitleRect.sizeDelta = new Vector2(1200f, 80f);
-            subtitleRect.anchoredPosition = Vector2.zero;
+            GameObject hint = CreateText("Hint", canvasGO.transform, "ESC = REPRENDRE  |  M = MENU PRINCIPAL", 30, TextAnchor.MiddleCenter, new Color(0.55f, 0.96f, 1f, 0.95f));
+            RectTransform hintRect = hint.GetComponent<RectTransform>();
+            hintRect.anchorMin = new Vector2(0.5f, 0.62f);
+            hintRect.anchorMax = new Vector2(0.5f, 0.62f);
+            hintRect.sizeDelta = new Vector2(1400f, 90f);
+            hintRect.anchoredPosition = Vector2.zero;
 
-            Button startButton = CreateButton("StartButton", canvasGO.transform, "JOUER", new Vector2(0.5f, 0.48f), new Vector2(380f, 86f));
-            Button quitButton = CreateButton("QuitButton", canvasGO.transform, "QUITTER", new Vector2(0.5f, 0.36f), new Vector2(380f, 86f));
+            Button resumeButton = CreateButton("ResumeButton", canvasGO.transform, "REPRENDRE", new Vector2(0.5f, 0.48f), new Vector2(440f, 96f));
+            Button mainMenuButton = CreateButton("MainMenuButton", canvasGO.transform, "MENU PRINCIPAL", new Vector2(0.5f, 0.36f), new Vector2(440f, 96f));
 
-            MainMenuController controller = canvasGO.AddComponent<MainMenuController>();
-            SerializedObject so = new SerializedObject(controller);
-            so.FindProperty("startButton").objectReferenceValue = startButton;
-            so.FindProperty("quitButton").objectReferenceValue = quitButton;
-            so.FindProperty("gameplaySceneName").stringValue = "Games";
-            so.ApplyModifiedPropertiesWithoutUndo();
+            PauseSceneController pauseController = canvasGO.AddComponent<PauseSceneController>();
+            SerializedObject pauseSO = new SerializedObject(pauseController);
+            pauseSO.FindProperty("resumeButton").objectReferenceValue = resumeButton;
+            pauseSO.FindProperty("mainMenuButton").objectReferenceValue = mainMenuButton;
+            pauseSO.FindProperty("gameplaySceneName").stringValue = "Games";
+            pauseSO.FindProperty("mainMenuSceneName").stringValue = "MainMenu";
+            pauseSO.FindProperty("mainMenuSceneFallbackName").stringValue = "MainMenue";
+            pauseSO.ApplyModifiedPropertiesWithoutUndo();
 
             EnsureFolder("Assets/Scenes");
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.SaveScene(pauseScene, BreakScenePath);
+
+            AttachPauseControllerToGameplayScene();
             AddScenesToBuildSettings();
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"[MINDRIFT] Main menu scene created at {ScenePath}.");
+            Debug.Log($"[MINDRIFT] Pause scene created at {BreakScenePath} and gameplay pause controller wired.");
+        }
+
+        private static void AttachPauseControllerToGameplayScene()
+        {
+            if (!File.Exists(GameplayScenePath))
+            {
+                Debug.LogWarning($"[MINDRIFT] Gameplay scene not found at {GameplayScenePath}.");
+                return;
+            }
+
+            Scene gameplayScene = EditorSceneManager.OpenScene(GameplayScenePath, OpenSceneMode.Single);
+
+            GameObject host = GameObject.Find("GameplayCanvas");
+            if (host == null)
+            {
+                host = new GameObject("GameplayCanvas");
+            }
+
+            GameplayPauseController pauseController = host.GetComponent<GameplayPauseController>();
+            if (pauseController == null)
+            {
+                pauseController = host.AddComponent<GameplayPauseController>();
+            }
+
+            SerializedObject so = new SerializedObject(pauseController);
+            so.FindProperty("gameplaySceneName").stringValue = "Games";
+            so.FindProperty("pauseSceneName").stringValue = "Break";
+            so.FindProperty("mainMenuSceneName").stringValue = "MainMenu";
+            so.FindProperty("mainMenuSceneFallbackName").stringValue = "MainMenue";
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            EditorSceneManager.MarkSceneDirty(gameplayScene);
+            EditorSceneManager.SaveScene(gameplayScene, GameplayScenePath);
         }
 
         private static void EnsureEventSystem()
@@ -89,16 +119,15 @@ namespace Mindrift.Editor
                 return;
             }
 
-            GameObject es = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
-            Undo.RegisterCreatedObjectUndo(es, "Create EventSystem");
+            _ = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
         }
 
         private static void AddScenesToBuildSettings()
         {
             List<EditorBuildSettingsScene> scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
-            AddOrEnableScene(scenes, ScenePath);
+            AddOrEnableScene(scenes, MainMenuScenePath);
             AddOrEnableScene(scenes, GameplayScenePath);
-
+            AddOrEnableScene(scenes, BreakScenePath);
             EditorBuildSettings.scenes = scenes.ToArray();
         }
 
@@ -157,7 +186,7 @@ namespace Mindrift.Editor
             colors.disabledColor = new Color(0.2f, 0.2f, 0.2f, 0.4f);
             button.colors = colors;
 
-            GameObject labelGO = CreateText("Label", buttonGO.transform, label, 32, TextAnchor.MiddleCenter, new Color(0.95f, 0.98f, 1f, 1f));
+            GameObject labelGO = CreateText("Label", buttonGO.transform, label, 30, TextAnchor.MiddleCenter, new Color(0.95f, 0.98f, 1f, 1f));
             Stretch(labelGO.GetComponent<RectTransform>());
 
             return button;

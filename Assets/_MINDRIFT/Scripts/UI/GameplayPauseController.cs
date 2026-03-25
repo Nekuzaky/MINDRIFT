@@ -38,26 +38,6 @@ namespace Mindrift.UI
 
         public static bool IsPaused => instance != null && instance.isPaused;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void EnsureInstance()
-        {
-            Scene activeScene = SceneManager.GetActiveScene();
-            if (!string.Equals(activeScene.name, "Games", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            GameplayPauseController existing = FindFirstObjectByType<GameplayPauseController>();
-            if (existing != null)
-            {
-                instance = existing;
-                return;
-            }
-
-            GameObject host = new GameObject("Gameplay Pause Controller");
-            host.AddComponent<GameplayPauseController>();
-        }
-
         private void Awake()
         {
             if (instance != null && instance != this)
