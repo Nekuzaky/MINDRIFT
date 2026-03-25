@@ -628,7 +628,7 @@ public sealed class RGBBrainrotBootstrap : MonoBehaviour
 
         GUI.Label(
             new Rect(14f, 14f, 900f, 40f),
-            $"RGB BRAINROT MODE  |  SPACE = TURBO {(speedMultiplier > 1f ? "ON" : "OFF")}",
+            $"",
             labelStyle
         );
     }
