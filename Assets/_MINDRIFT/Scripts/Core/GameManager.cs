@@ -8,6 +8,7 @@ namespace Mindrift.Core
         [SerializeField] private HeightProgressionManager heightProgressionManager;
         [SerializeField] private Checkpoints.CheckpointManager checkpointManager;
         [SerializeField] private Player.PlayerFallRespawn playerFallRespawn;
+        [SerializeField] private bool ensureStatsTracker = true;
 
         [Header("Debug")]
         [SerializeField] private bool autoResolveOnAwake = true;
@@ -18,6 +19,11 @@ namespace Mindrift.Core
 
         private void Awake()
         {
+            if (ensureStatsTracker && GetComponent<PlayerStatsTracker>() == null)
+            {
+                gameObject.AddComponent<PlayerStatsTracker>();
+            }
+
             if (!autoResolveOnAwake)
             {
                 return;

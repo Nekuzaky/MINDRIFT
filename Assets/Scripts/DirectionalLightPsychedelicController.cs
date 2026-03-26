@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.HighDefinition;
+using Mindrift.Core;
 
 [DefaultExecutionOrder(-8500)]
 public sealed class DirectionalLightPsychedelicController : MonoBehaviour
@@ -34,13 +35,33 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
     [SerializeField] [Range(0f, 1f)] private float backgroundValue = 0.8f;
     [SerializeField] private float backgroundHueSpeedMultiplier = 1.35f;
 
+    [Header("Music Sync")]
+    [SerializeField] private bool syncWithMusic = true;
+    [SerializeField] private bool syncBackgroundWithMusic = true;
+    [SerializeField] private bool autoFindMusicSource = true;
+    [SerializeField] private bool useAudioListenerFallback = true;
+    [SerializeField] private AudioSource musicSource;
+    [SerializeField] private FFTWindow fftWindow = FFTWindow.BlackmanHarris;
+    [SerializeField, Range(32, 1024)] private int spectrumSampleCount = 128;
+    [SerializeField, Range(0f, 1f)] private float bassWeight = 0.65f;
+    [SerializeField, Range(0f, 1f)] private float midWeight = 0.25f;
+    [SerializeField, Range(0f, 1f)] private float highWeight = 0.1f;
+    [SerializeField] private float spectrumGain = 46f;
+    [SerializeField] private float attackSpeed = 12f;
+    [SerializeField] private float releaseSpeed = 4f;
+    [SerializeField, Range(0f, 1.5f)] private float musicPulseBoost = 0.42f;
+    [SerializeField, Range(0f, 0.4f)] private float backgroundMusicValueBoost = 0.12f;
+
     [Header("Targets")]
     [SerializeField] private List<Light> directionalLights = new();
 
     private readonly List<float> baseIntensities = new();
     private float nextRefreshTime;
+    private float nextAudioRefreshTime;
     private Camera cachedMainCamera;
     private HDAdditionalCameraData cachedHdCameraData;
+    private float[] spectrumBuffer;
+    private float smoothedMusicEnergy;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureInstance()
@@ -61,12 +82,16 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
 
     private void Awake()
     {
+        ValidateSpectrumConfig();
+        TryResolveMusicSource();
         CacheMainCamera();
         RefreshDirectionalLights();
     }
 
     private void OnEnable()
     {
+        ValidateSpectrumConfig();
+        TryResolveMusicSource();
         CacheMainCamera();
         RefreshDirectionalLights();
     }
@@ -79,9 +104,17 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
             nextRefreshTime = Time.time + 2f;
         }
 
+        if (autoFindMusicSource && (musicSource == null || Time.time >= nextAudioRefreshTime))
+        {
+            TryResolveMusicSource();
+            nextAudioRefreshTime = Time.time + 2f;
+        }
+
+        float musicEnergy = ComputeMusicEnergy();
+
         if (directionalLights.Count == 0)
         {
-            ApplyBackground(Time.time);
+            ApplyBackground(Time.time, musicEnergy);
             return;
         }
 
@@ -110,6 +143,11 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
 
             float baseIntensity = baseIntensities.Count > i ? baseIntensities[i] : Mathf.Max(1f, lightComponent.intensity);
             float pulse = 1f + Mathf.Sin(time * intensityPulseSpeed + i * 1.17f) * intensityPulseStrength;
+            if (syncWithMusic)
+            {
+                pulse *= 1f + musicEnergy * musicPulseBoost;
+            }
+
             lightComponent.intensity = Mathf.Max(0f, baseIntensity * pulse);
 
             if (rotateDirectionalLights && lightRotationSpeedEuler.sqrMagnitude > 0.0001f)
@@ -118,7 +156,7 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
             }
         }
 
-        ApplyBackground(time);
+        ApplyBackground(time, musicEnergy);
     }
 
     [ContextMenu("Refresh Directional Lights")]
@@ -183,7 +221,7 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
         }
     }
 
-    private void ApplyBackground(float time)
+    private void ApplyBackground(float time, float musicEnergy)
     {
         if (driveAmbientAndFog)
         {
@@ -223,7 +261,7 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
         Color background = Color.HSVToRGB(
             Mathf.Repeat(time * hueCycleSpeed * backgroundHueSpeedMultiplier + 0.12f, 1f),
             Mathf.Clamp01(backgroundSaturation),
-            Mathf.Clamp01(backgroundValue)
+            Mathf.Clamp01(backgroundValue + (syncBackgroundWithMusic ? musicEnergy * backgroundMusicValueBoost : 0f))
         );
 
         cachedMainCamera.clearFlags = CameraClearFlags.SolidColor;
@@ -234,6 +272,119 @@ public sealed class DirectionalLightPsychedelicController : MonoBehaviour
             cachedHdCameraData.clearColorMode = HDAdditionalCameraData.ClearColorMode.Color;
             cachedHdCameraData.backgroundColorHDR = background;
         }
+    }
+
+    private float ComputeMusicEnergy()
+    {
+        if (!syncWithMusic && !syncBackgroundWithMusic)
+        {
+            smoothedMusicEnergy = Mathf.MoveTowards(smoothedMusicEnergy, 0f, Time.unscaledDeltaTime * releaseSpeed);
+            return smoothedMusicEnergy;
+        }
+
+        int sampleCount = Mathf.ClosestPowerOfTwo(Mathf.Clamp(spectrumSampleCount, 32, 1024));
+        if (spectrumBuffer == null || spectrumBuffer.Length != sampleCount)
+        {
+            spectrumBuffer = new float[sampleCount];
+        }
+
+        bool hasSpectrum = false;
+        if (musicSource != null)
+        {
+            musicSource.GetSpectrumData(spectrumBuffer, 0, fftWindow);
+            hasSpectrum = true;
+        }
+        else if (useAudioListenerFallback)
+        {
+            AudioListener.GetSpectrumData(spectrumBuffer, 0, fftWindow);
+            hasSpectrum = true;
+        }
+
+        if (!hasSpectrum)
+        {
+            smoothedMusicEnergy = Mathf.MoveTowards(smoothedMusicEnergy, 0f, Time.unscaledDeltaTime * releaseSpeed);
+            return smoothedMusicEnergy;
+        }
+
+        float lowBand = 0f;
+        float midBand = 0f;
+        float highBand = 0f;
+
+        int lowEnd = Mathf.Max(1, Mathf.RoundToInt(sampleCount * 0.12f));
+        int midEnd = Mathf.Max(lowEnd + 1, Mathf.RoundToInt(sampleCount * 0.45f));
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float value = spectrumBuffer[i];
+            if (i < lowEnd)
+            {
+                lowBand += value;
+            }
+            else if (i < midEnd)
+            {
+                midBand += value;
+            }
+            else
+            {
+                highBand += value;
+            }
+        }
+
+        lowBand /= lowEnd;
+        midBand /= Mathf.Max(1, midEnd - lowEnd);
+        highBand /= Mathf.Max(1, sampleCount - midEnd);
+
+        float weightSum = Mathf.Max(0.0001f, bassWeight + midWeight + highWeight);
+        float weightedEnergy = (lowBand * bassWeight + midBand * midWeight + highBand * highWeight) / weightSum;
+        float target = Mathf.Clamp01(weightedEnergy * spectrumGain);
+
+        float smoothSpeed = target >= smoothedMusicEnergy ? attackSpeed : releaseSpeed;
+        smoothedMusicEnergy = Mathf.Lerp(smoothedMusicEnergy, target, Time.unscaledDeltaTime * Mathf.Max(0.01f, smoothSpeed));
+        return smoothedMusicEnergy;
+    }
+
+    private void TryResolveMusicSource()
+    {
+        if (musicSource != null)
+        {
+            return;
+        }
+
+        AudioManager manager = FindFirstObjectByType<AudioManager>();
+        if (manager != null && manager.MasterLoopSource != null)
+        {
+            musicSource = manager.MasterLoopSource;
+            return;
+        }
+
+        AudioSource[] sources = FindObjectsByType<AudioSource>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+        for (int i = 0; i < sources.Length; i++)
+        {
+            AudioSource source = sources[i];
+            if (source == null)
+            {
+                continue;
+            }
+
+            if (source.clip != null && (source.isPlaying || source.loop))
+            {
+                musicSource = source;
+                return;
+            }
+        }
+    }
+
+    private void OnValidate()
+    {
+        ValidateSpectrumConfig();
+    }
+
+    private void ValidateSpectrumConfig()
+    {
+        spectrumSampleCount = Mathf.ClosestPowerOfTwo(Mathf.Clamp(spectrumSampleCount, 32, 1024));
+        attackSpeed = Mathf.Max(0.01f, attackSpeed);
+        releaseSpeed = Mathf.Max(0.01f, releaseSpeed);
+        spectrumGain = Mathf.Max(0f, spectrumGain);
     }
 
     private void CacheMainCamera()
