@@ -109,9 +109,9 @@ namespace Mindrift.UI
 
         private void ConfigureHierarchyStyle()
         {
-            PositionButton(startButton, 0.5f);
-            PositionButton(optionsButton, 0.4f);
-            PositionButton(quitButton, 0.3f);
+            PositionButton(startButton, 0.49f);
+            PositionButton(optionsButton, 0.39f);
+            PositionButton(quitButton, 0.29f);
 
             StyleButton(startButton);
             StyleButton(optionsButton);
@@ -234,8 +234,19 @@ namespace Mindrift.UI
             if (label != null)
             {
                 label.text = text;
-                label.color = new Color(0.9f, 0.98f, 1f, 1f);
+                label.color = new Color(0.92f, 0.98f, 1f, 1f);
+                label.fontSize = 34;
                 label.fontStyle = FontStyle.Bold;
+
+                Outline outline = label.GetComponent<Outline>();
+                if (outline == null)
+                {
+                    outline = label.gameObject.AddComponent<Outline>();
+                }
+
+                outline.effectColor = new Color(0.03f, 0.09f, 0.12f, 0.9f);
+                outline.effectDistance = new Vector2(0f, -1f);
+                outline.useGraphicAlpha = true;
             }
         }
 
@@ -256,7 +267,7 @@ namespace Mindrift.UI
             rect.anchorMax = new Vector2(0.5f, anchorY);
             rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = Vector2.zero;
-            rect.sizeDelta = new Vector2(420f, 86f);
+            rect.sizeDelta = new Vector2(470f, 92f);
         }
 
         private static void StyleButton(Button button)
@@ -269,15 +280,16 @@ namespace Mindrift.UI
             Image image = button.GetComponent<Image>();
             if (image != null)
             {
-                image.color = new Color(0.09f, 0.14f, 0.22f, 0.92f);
+                image.color = new Color(0.07f, 0.11f, 0.18f, 0.95f);
             }
 
             ColorBlock colors = button.colors;
-            colors.normalColor = new Color(0.09f, 0.14f, 0.22f, 0.92f);
-            colors.highlightedColor = new Color(0.13f, 0.35f, 0.49f, 1f);
-            colors.selectedColor = new Color(0.16f, 0.45f, 0.62f, 1f);
-            colors.pressedColor = new Color(0.08f, 0.24f, 0.32f, 1f);
+            colors.normalColor = new Color(0.07f, 0.11f, 0.18f, 0.95f);
+            colors.highlightedColor = new Color(0.13f, 0.34f, 0.46f, 1f);
+            colors.selectedColor = new Color(0.2f, 0.56f, 0.73f, 1f);
+            colors.pressedColor = new Color(0.06f, 0.21f, 0.29f, 1f);
             colors.disabledColor = new Color(0.22f, 0.22f, 0.22f, 0.48f);
+            colors.fadeDuration = 0.08f;
             button.colors = colors;
 
             if (button.GetComponent<MenuSelectableFeedback>() == null)

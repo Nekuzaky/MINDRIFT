@@ -7,13 +7,15 @@ namespace Mindrift.Core
 {
     public sealed class LivesSystem : MonoBehaviour
     {
+        private const int AbsoluteMaxLives = 3;
+
         [Header("References")]
         [SerializeField] private PlayerFallRespawn playerFallRespawn;
         [SerializeField] private CheckpointManager checkpointManager;
         [SerializeField] private RunSessionManager runSessionManager;
 
         [Header("Lives")]
-        [SerializeField, Min(1)] private int maxLives = 5;
+        [SerializeField, Range(1, AbsoluteMaxLives)] private int maxLives = AbsoluteMaxLives;
         [SerializeField] private bool resetLivesOnRunStart = true;
         [SerializeField] private bool refillLivesAfterDepletion = true;
 
@@ -35,7 +37,7 @@ namespace Mindrift.Core
         private bool gameplayLockedBySystem;
         private float cachedTimeScale = 1f;
 
-        public int MaxLives => Mathf.Max(1, maxLives);
+        public int MaxLives => Mathf.Clamp(maxLives, 1, AbsoluteMaxLives);
         public int CurrentLives { get; private set; }
         public bool IsGameOver { get; private set; }
 
@@ -45,6 +47,8 @@ namespace Mindrift.Core
 
         private void Awake()
         {
+            maxLives = Mathf.Clamp(maxLives, 1, AbsoluteMaxLives);
+
             if (playerFallRespawn == null)
             {
                 playerFallRespawn = FindFirstObjectByType<PlayerFallRespawn>();
@@ -71,6 +75,11 @@ namespace Mindrift.Core
             }
 
             ResetLives(false);
+        }
+
+        private void OnValidate()
+        {
+            maxLives = Mathf.Clamp(maxLives, 1, AbsoluteMaxLives);
         }
 
         private void OnEnable()
