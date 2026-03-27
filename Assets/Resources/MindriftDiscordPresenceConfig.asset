@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b4eeff2d03c4dc449ad4ad40e3e53865, type: 3}
+  m_Name: MindriftDiscordPresenceConfig
+  m_EditorClassIdentifier: Assembly-CSharp::Mindrift.Online.Presence.DiscordRichPresenceConfig
+  enabledByDefault: 1
+  applicationId: 1486474422868119715
+  refreshIntervalSeconds: 1
+  verboseLogging: 0
+  mainMenuDetails: Main Menu
+  mainMenuState: Preparing the next drift
+  inRunDetails: In Run
+  inRunState: Climbing through cognitive noise
+  pausedDetails: Paused
+  pausedState: Catching a breath
+  gameOverDetails: Game Over
+  gameOverState: Neural collapse
+  gameplayIdleDetails: Gameplay
+  gameplayIdleState: Exploring the rift
+  largeImageKey: 
+  largeImageText: MINDRIFT
+  smallImageKeyRun: 
+  smallImageTextRun: In Run
+  smallImageKeyPause: 
+  smallImageTextPause: Paused
+  smallImageKeyGameOver: 
+  smallImageTextGameOver: Game Over
+  smallImageKeyMenu: 
+  smallImageTextMenu: Main Menu
+  showPrimaryButton: 0
+  primaryButtonLabel: Open Website
+  primaryButtonUrl: https://nekuzaky.com/mindrift
+  showSecondaryButton: 0
+  secondaryButtonLabel: Join Discord
+  secondaryButtonUrl: 
+  showRunTimer: 1

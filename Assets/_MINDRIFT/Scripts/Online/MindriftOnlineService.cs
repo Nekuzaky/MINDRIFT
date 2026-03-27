@@ -226,7 +226,9 @@ namespace Mindrift.Online
             suppressSettingsPush = true;
             try
             {
-                result.Data.ApplyToLocalSettings();
+                // Do not auto-apply display settings on login/session-restore:
+                // remote payloads may omit those fields and default to index 0, shrinking the window.
+                result.Data.ApplyToLocalSettings(applyDisplaySettings: false);
             }
             finally
             {

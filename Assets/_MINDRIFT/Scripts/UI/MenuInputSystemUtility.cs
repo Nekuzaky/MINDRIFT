@@ -45,6 +45,9 @@ namespace Mindrift.UI
                 return;
             }
 
+            eventSystem.enabled = true;
+            eventSystem.sendNavigationEvents = true;
+
 #if ENABLE_INPUT_SYSTEM
             InputSystemUIInputModule inputModule = eventSystem.GetComponent<InputSystemUIInputModule>();
             if (inputModule == null)
@@ -52,7 +55,21 @@ namespace Mindrift.UI
                 inputModule = eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
             }
 
-            if (inputModule.actionsAsset == null)
+            inputModule.enabled = true;
+            bool missingRequiredActions =
+                inputModule.actionsAsset == null ||
+                inputModule.point == null ||
+                inputModule.leftClick == null ||
+                inputModule.move == null ||
+                inputModule.submit == null ||
+                inputModule.cancel == null ||
+                inputModule.point.action == null ||
+                inputModule.leftClick.action == null ||
+                inputModule.move.action == null ||
+                inputModule.submit.action == null ||
+                inputModule.cancel.action == null;
+
+            if (missingRequiredActions)
             {
                 inputModule.AssignDefaultActions();
             }
@@ -62,6 +79,14 @@ namespace Mindrift.UI
             {
                 Object.Destroy(standalone);
             }
+#else
+            StandaloneInputModule standalone = eventSystem.GetComponent<StandaloneInputModule>();
+            if (standalone == null)
+            {
+                standalone = eventSystem.gameObject.AddComponent<StandaloneInputModule>();
+            }
+
+            standalone.enabled = true;
 #endif
         }
     }

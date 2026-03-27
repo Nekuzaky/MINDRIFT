@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 #if ENABLE_INPUT_SYSTEM
@@ -52,6 +53,7 @@ namespace Mindrift.UI
         [SerializeField] private Slider sensitivitySlider;
         [SerializeField] private Text sensitivityValueText;
         [SerializeField] private Toggle invertYToggle;
+        [SerializeField] private Toggle controllerVibrationToggle;
         [SerializeField] private Slider deadzoneSlider;
         [SerializeField] private Text deadzoneValueText;
 
@@ -119,6 +121,9 @@ namespace Mindrift.UI
                 return;
             }
 
+            EnsureCursorVisible();
+            EnsureMenuSelection();
+
             if (IsCancelPressed())
             {
                 Close();
@@ -130,6 +135,11 @@ namespace Mindrift.UI
             EnsureBuilt();
             onClosed = closedCallback;
             SettingsManager.EnsureInitialized();
+            MenuInputSystemUtility.EnsureEventSystem();
+            if (backButton != null)
+            {
+                backButton.interactable = true;
+            }
             RefreshFromSettings();
             SetPanelVisible(true);
             SwitchTab(currentTab);
@@ -310,18 +320,19 @@ namespace Mindrift.UI
             }
 
             CreateSliderRow(controlsPanel.transform, "Sensitivity", "CONTROLLER SENSITIVITY", 0.62f, out sensitivitySlider, out sensitivityValueText, controlsSelectables, 0.4f, 2f);
-            CreateToggleRow(controlsPanel.transform, "InvertY", "INVERT Y", 0.43f, out invertYToggle, controlsSelectables);
-            CreateSliderRow(controlsPanel.transform, "Deadzone", "DEADZONE", 0.25f, out deadzoneSlider, out deadzoneValueText, controlsSelectables, 0f, 0.4f);
+            CreateToggleRow(controlsPanel.transform, "InvertY", "INVERT Y", 0.47f, out invertYToggle, controlsSelectables);
+            CreateToggleRow(controlsPanel.transform, "ControllerVibration", "CONTROLLER VIBRATION", 0.32f, out controllerVibrationToggle, controlsSelectables);
+            CreateSliderRow(controlsPanel.transform, "Deadzone", "DEADZONE", 0.17f, out deadzoneSlider, out deadzoneValueText, controlsSelectables, 0f, 0.4f);
 
             Text hints = CreateText(
                 controlsPanel.transform,
                 "NavigationHints",
                 "KEYBOARD: WASD/ARROWS + ENTER + ESC\nCONTROLLER: DPAD/STICK + A + B/START",
-                17,
+                16,
                 TextAnchor.UpperLeft,
                 new Color(0.56f, 0.9f, 0.98f, 0.96f),
-                new Vector2(0.02f, 0.02f),
-                new Vector2(0.82f, 0.18f));
+                new Vector2(0.02f, 0.01f),
+                new Vector2(0.86f, 0.1f));
             hints.horizontalOverflow = HorizontalWrapMode.Wrap;
         }
 
@@ -432,15 +443,36 @@ namespace Mindrift.UI
             invertYToggle.onValueChanged.RemoveListener(OnInvertYChanged);
             invertYToggle.onValueChanged.AddListener(OnInvertYChanged);
 
+            controllerVibrationToggle.onValueChanged.RemoveListener(OnControllerVibrationChanged);
+            controllerVibrationToggle.onValueChanged.AddListener(OnControllerVibrationChanged);
+
             deadzoneSlider.onValueChanged.RemoveListener(OnDeadzoneChanged);
             deadzoneSlider.onValueChanged.AddListener(OnDeadzoneChanged);
         }
 
         private void ConfigureNavigation()
         {
-            MenuNavigationController.ApplyVerticalNavigation(audioSelectables);
-            MenuNavigationController.ApplyVerticalNavigation(displaySelectables);
-            MenuNavigationController.ApplyVerticalNavigation(controlsSelectables);
+            List<Selectable> audioOrder = new List<Selectable>(audioSelectables);
+            if (backButton != null)
+            {
+                audioOrder.Add(backButton);
+            }
+
+            List<Selectable> displayOrder = new List<Selectable>(displaySelectables);
+            if (backButton != null)
+            {
+                displayOrder.Add(backButton);
+            }
+
+            List<Selectable> controlsOrder = new List<Selectable>(controlsSelectables);
+            if (backButton != null)
+            {
+                controlsOrder.Add(backButton);
+            }
+
+            MenuNavigationController.ApplyVerticalNavigation(audioOrder);
+            MenuNavigationController.ApplyVerticalNavigation(displayOrder);
+            MenuNavigationController.ApplyVerticalNavigation(controlsOrder);
 
             List<Selectable> tabs = new List<Selectable> { audioTabButton, displayTabButton, controlsTabButton, backButton };
             MenuNavigationController.ApplyVerticalNavigation(tabs);
@@ -471,6 +503,7 @@ namespace Mindrift.UI
             UpdatePercent(sensitivityValueText, Mathf.InverseLerp(0.4f, 2f, SettingsManager.ControllerSensitivity));
 
             invertYToggle.isOn = SettingsManager.InvertY;
+            controllerVibrationToggle.isOn = SettingsManager.ControllerVibrationEnabled;
 
             deadzoneSlider.value = SettingsManager.ControllerDeadzone;
             UpdatePercent(deadzoneValueText, Mathf.Clamp01(SettingsManager.ControllerDeadzone / 0.4f));
@@ -554,7 +587,28 @@ namespace Mindrift.UI
                 target = backButton;
             }
 
+            if (EventSystem.current != null && target != null)
+            {
+                EventSystem.current.SetSelectedGameObject(target.gameObject);
+            }
+
             MenuNavigationController.SelectDefault(this, target);
+        }
+
+        private void EnsureMenuSelection()
+        {
+            if (!isOpen || EventSystem.current == null)
+            {
+                return;
+            }
+
+            GameObject selected = EventSystem.current.currentSelectedGameObject;
+            if (selected != null && panelRoot != null && selected.transform.IsChildOf(panelRoot.transform))
+            {
+                return;
+            }
+
+            SelectFirstCurrentTabControl();
         }
 
         private static Selectable GetFirstSelectable(List<Selectable> list)
@@ -586,10 +640,24 @@ namespace Mindrift.UI
             if (visible)
             {
                 openCount++;
+                EnsureCursorVisible();
             }
             else
             {
                 openCount = Mathf.Max(0, openCount - 1);
+            }
+        }
+
+        private static void EnsureCursorVisible()
+        {
+            if (!Cursor.visible)
+            {
+                Cursor.visible = true;
+            }
+
+            if (Cursor.lockState != CursorLockMode.None)
+            {
+                Cursor.lockState = CursorLockMode.None;
             }
         }
 
@@ -668,6 +736,12 @@ namespace Mindrift.UI
             if (suppressCallbacks) return;
             SettingsManager.SetControllerDeadzone(value);
             UpdatePercent(deadzoneValueText, Mathf.Clamp01(value / 0.4f));
+        }
+
+        private void OnControllerVibrationChanged(bool value)
+        {
+            if (suppressCallbacks) return;
+            SettingsManager.SetControllerVibrationEnabled(value);
         }
 
         private static void UpdatePercent(Text label, float value01)

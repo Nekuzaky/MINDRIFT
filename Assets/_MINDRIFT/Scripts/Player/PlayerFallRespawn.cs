@@ -1,8 +1,13 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using Mindrift.Checkpoints;
 using Mindrift.Effects;
 using Mindrift.UI;
+
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 namespace Mindrift.Player
 {
@@ -21,11 +26,21 @@ namespace Mindrift.Player
         [Header("Debug")]
         [SerializeField] private bool logRespawns;
 
+#if ENABLE_INPUT_SYSTEM
+        [Header("Controller Haptics")]
+        [SerializeField, Range(0f, 1f)] private float deathVibrationLowFrequency = 0.35f;
+        [SerializeField, Range(0f, 1f)] private float deathVibrationHighFrequency = 0.75f;
+        [SerializeField, Range(0.02f, 1f)] private float deathVibrationDuration = 0.18f;
+#endif
+
         public event Action Respawned;
 
         public float KillHeight => killHeight;
 
         private bool isRespawning;
+#if ENABLE_INPUT_SYSTEM
+        private Coroutine vibrationRoutine;
+#endif
 
         private void Awake()
         {
@@ -46,6 +61,16 @@ namespace Mindrift.Player
             {
                 RespawnAtCheckpoint();
             }
+        }
+
+        private void OnDisable()
+        {
+            StopVibrationIfNeeded();
+        }
+
+        private void OnDestroy()
+        {
+            StopVibrationIfNeeded();
         }
 
         [ContextMenu("Respawn At Last Checkpoint")]
@@ -91,6 +116,7 @@ namespace Mindrift.Player
                 sideEffectUI.PlayRespawnFlash();
             }
 
+            TriggerDeathVibration();
             Respawned?.Invoke();
 
             if (logRespawns)
@@ -105,5 +131,75 @@ namespace Mindrift.Player
         {
             checkpointManager = manager;
         }
+
+        private void TriggerDeathVibration()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (!SettingsManager.ControllerVibrationEnabled)
+            {
+                return;
+            }
+
+            Gamepad gamepad = Gamepad.current;
+            if (gamepad == null)
+            {
+                return;
+            }
+
+            if (vibrationRoutine != null)
+            {
+                StopCoroutine(vibrationRoutine);
+            }
+
+            vibrationRoutine = StartCoroutine(DeathVibrationPulseRoutine(gamepad));
+#endif
+        }
+
+        private void StopVibrationIfNeeded()
+        {
+#if ENABLE_INPUT_SYSTEM
+            if (vibrationRoutine != null)
+            {
+                StopCoroutine(vibrationRoutine);
+                vibrationRoutine = null;
+            }
+
+            if (Gamepad.current != null)
+            {
+                Gamepad.current.ResetHaptics();
+            }
+#endif
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        private IEnumerator DeathVibrationPulseRoutine(Gamepad gamepad)
+        {
+            if (gamepad == null)
+            {
+                vibrationRoutine = null;
+                yield break;
+            }
+
+            float low = Mathf.Clamp01(deathVibrationLowFrequency);
+            float high = Mathf.Clamp01(deathVibrationHighFrequency);
+            float duration = Mathf.Clamp(deathVibrationDuration, 0.02f, 1f);
+
+            gamepad.SetMotorSpeeds(low, high);
+
+            float endTime = Time.unscaledTime + duration;
+            while (Time.unscaledTime < endTime)
+            {
+                if (!SettingsManager.ControllerVibrationEnabled || gamepad != Gamepad.current)
+                {
+                    break;
+                }
+
+                yield return null;
+            }
+
+            gamepad.ResetHaptics();
+            vibrationRoutine = null;
+        }
+#endif
     }
 }

@@ -124,6 +124,19 @@ namespace Mindrift.UI
             RotateSubtitle(Time.unscaledTime);
         }
 
+        public void RefreshPreviewFrame(float previewTime = 0f)
+        {
+            InitializeIfNeeded();
+            if (!isInitialized)
+            {
+                return;
+            }
+
+            ApplyLayout(force: true);
+            AnimateBackdrop(previewTime);
+            AnimateNodes(0f, previewTime);
+        }
+
         private void InitializeIfNeeded()
         {
             if (canvasRoot == null)
@@ -139,8 +152,7 @@ namespace Mindrift.UI
             sharedFont ??= ResolveBuiltinFont();
             ResolveTextReferences();
             EnsureAtmosphereHierarchy();
-            EnsureDailyPanel();
-            RefreshDailyCard();
+            RemoveDailyPanel();
             nextSubtitleSwapAt = Time.unscaledTime + Mathf.Max(2f, subtitleCycleInterval);
             isInitialized = true;
         }
@@ -263,6 +275,28 @@ namespace Mindrift.UI
             }
         }
 
+        private void RemoveDailyPanel()
+        {
+            GameObject panelObject = FindChild(canvasRoot, "DailyChallengePanel");
+            if (panelObject != null)
+            {
+                if (Application.isPlaying)
+                {
+                    Destroy(panelObject);
+                }
+                else
+                {
+                    DestroyImmediate(panelObject);
+                }
+            }
+
+            dailyPanel = null;
+            dailyHeaderText = null;
+            dailyModifierText = null;
+            dailyObjectiveText = null;
+            dailyRewardText = null;
+        }
+
         private void EnsureDailyPanel()
         {
             GameObject panelObject = FindChild(canvasRoot, "DailyChallengePanel");
@@ -359,14 +393,11 @@ namespace Mindrift.UI
             }
 
             lastCanvasSize = canvasSize;
-            bool compact = canvasSize.x < 1440f || canvasSize.y < 900f;
 
             if (atmosphereRoot != null)
             {
                 Stretch(atmosphereRoot, new Vector2(-220f, -220f), new Vector2(220f, 220f));
             }
-
-            LayoutDailyPanel(compact);
         }
 
         private void LayoutDailyPanel(bool compact)

@@ -25,12 +25,12 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _UE_Intensity: 0.10058684
-    - _UE_PulseSpeed: 1.1721714
-    - _UE_RGBSplit: 0.0011171584
-    - _UE_ScanStrength: 0.01594672
-    - _UE_TimeScale: 0.8857922
-    - _UE_WarpStrength: 0.006415886
+    - _UE_Intensity: 0.0000004313303
+    - _UE_PulseSpeed: 0.8000016
+    - _UE_RGBSplit: 0.0008
+    - _UE_ScanStrength: 0.01
+    - _UE_TimeScale: 0.7500006
+    - _UE_WarpStrength: 0.005
     m_Colors: []
   m_BuildTextureStacks: []
   m_AllowLocking: 1

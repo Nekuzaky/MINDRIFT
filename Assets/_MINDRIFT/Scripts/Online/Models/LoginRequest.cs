@@ -6,6 +6,7 @@ namespace Mindrift.Online.Models
     public sealed class LoginRequest
     {
         public string identifier;
+        public string email;
         public string password;
     }
 }

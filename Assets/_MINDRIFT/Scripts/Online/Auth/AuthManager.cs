@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Mindrift.Auth;
@@ -75,17 +76,23 @@ namespace Mindrift.Online.Auth
 
         public async Task<AuthOperationResult> SignInAsync(string identifier, string password, CancellationToken cancellationToken = default)
         {
-            string safeIdentifier = string.IsNullOrWhiteSpace(identifier) ? string.Empty : identifier.Trim();
+            string safeEmail = string.IsNullOrWhiteSpace(identifier) ? string.Empty : identifier.Trim();
             string safePassword = string.IsNullOrWhiteSpace(password) ? string.Empty : password.Trim();
 
-            if (string.IsNullOrWhiteSpace(safeIdentifier) || string.IsNullOrWhiteSpace(safePassword))
+            if (string.IsNullOrWhiteSpace(safeEmail) || string.IsNullOrWhiteSpace(safePassword))
             {
-                return AuthOperationResult.Failed("Enter username/email and password.");
+                return AuthOperationResult.Failed("Enter email and password.");
+            }
+
+            if (!IsLikelyEmail(safeEmail))
+            {
+                return AuthOperationResult.Failed("Enter a valid email address.");
             }
 
             LoginRequest request = new LoginRequest
             {
-                identifier = safeIdentifier,
+                identifier = safeEmail,
+                email = safeEmail,
                 password = safePassword
             };
 
@@ -111,6 +118,12 @@ namespace Mindrift.Online.Auth
             string token = responseData != null ? responseData.ResolveToken() : string.Empty;
             if (string.IsNullOrWhiteSpace(token))
             {
+                token = ExtractTokenFromRawJson(loginResult.RawBody);
+            }
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                Debug.LogWarning($"[MINDRIFT][Auth] Login response had success=true but no recognized token field. Raw body: {loginResult.RawBody}");
                 return AuthOperationResult.Failed("Login succeeded but token is missing.");
             }
 
@@ -124,8 +137,8 @@ namespace Mindrift.Online.Auth
                 }
             }
 
-            user ??= BuildFallbackUser(safeIdentifier);
-            SetAuthenticatedSession(token, user);
+            user ??= BuildFallbackUser(safeEmail);
+            SetAuthenticatedSession(token, user, safeEmail);
 
             _ = MindriftOnlineService.Instance.PullRemoteSettingsAndApplyAsync(cancellationToken);
             return AuthOperationResult.Succeeded(CurrentSession, $"Welcome, {CurrentSession.DisplayName}.");
@@ -155,7 +168,7 @@ namespace Mindrift.Online.Auth
 
             if (meResult.Success && meResult.Data != null)
             {
-                SetAuthenticatedSession(token, meResult.Data);
+                SetAuthenticatedSession(token, meResult.Data, fallbackIdentifier: string.Empty);
                 _ = MindriftOnlineService.Instance.PullRemoteSettingsAndApplyAsync(cancellationToken);
                 return CurrentSession;
             }
@@ -169,18 +182,31 @@ namespace Mindrift.Online.Auth
             return CurrentSession;
         }
 
-        private void SetAuthenticatedSession(string token, UserSummary user)
+        private void SetAuthenticatedSession(string token, UserSummary user, string fallbackIdentifier)
         {
             user ??= new UserSummary();
             user.Sanitize();
             string userId = user.ResolveUserId();
             string username = user.ResolveDisplayName();
 
+            if (!user.HasDisplayIdentity() && !string.IsNullOrWhiteSpace(fallbackIdentifier))
+            {
+                username = fallbackIdentifier.Trim();
+            }
+
+            string resolvedEmail = user.email ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(resolvedEmail) &&
+                !string.IsNullOrWhiteSpace(fallbackIdentifier) &&
+                fallbackIdentifier.Contains("@", StringComparison.Ordinal))
+            {
+                resolvedEmail = fallbackIdentifier.Trim();
+            }
+
             AuthSessionData session = new AuthSessionData
             {
                 userId = string.IsNullOrWhiteSpace(userId) ? username.ToLowerInvariant() : userId,
                 username = username,
-                email = user.email ?? string.Empty,
+                email = resolvedEmail,
                 authToken = string.IsNullOrWhiteSpace(token) ? string.Empty : token.Trim(),
                 signedInAtUtc = DateTime.UtcNow.ToString("O"),
                 provider = "nekuzaky_api",
@@ -212,6 +238,55 @@ namespace Mindrift.Online.Auth
                 display_name = trimmed,
                 email = trimmed.Contains("@", StringComparison.Ordinal) ? trimmed : string.Empty
             };
+        }
+
+        private static bool IsLikelyEmail(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string trimmed = value.Trim();
+            int at = trimmed.IndexOf('@');
+            if (at <= 0 || at >= trimmed.Length - 1)
+            {
+                return false;
+            }
+
+            int dot = trimmed.LastIndexOf('.');
+            return dot > at + 1 && dot < trimmed.Length - 1;
+        }
+
+        private static string ExtractTokenFromRawJson(string rawBody)
+        {
+            if (string.IsNullOrWhiteSpace(rawBody))
+            {
+                return string.Empty;
+            }
+
+            const string pattern =
+                "\"(?:token|access_token|accessToken|auth_token|authToken|bearer_token|bearerToken|jwt|jwt_token|id_token|session_token)\"\\s*:\\s*\"([^\"]+)\"";
+
+            Match match = Regex.Match(rawBody, pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success || match.Groups.Count < 2)
+            {
+                return string.Empty;
+            }
+
+            string tokenValue = match.Groups[1].Value;
+            if (string.IsNullOrWhiteSpace(tokenValue))
+            {
+                return string.Empty;
+            }
+
+            tokenValue = tokenValue.Trim();
+            if (tokenValue.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                tokenValue = tokenValue.Substring("Bearer ".Length).Trim();
+            }
+
+            return tokenValue;
         }
     }
 }

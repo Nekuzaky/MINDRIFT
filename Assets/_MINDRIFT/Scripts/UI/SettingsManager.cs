@@ -5,6 +5,10 @@ using Mindrift.Player;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
 namespace Mindrift.UI
 {
     public static class SettingsManager
@@ -18,6 +22,8 @@ namespace Mindrift.UI
         private const string ControllerSensitivityKey = "Mindrift.Settings.ControllerSensitivity";
         private const string InvertYKey = "Mindrift.Settings.InvertY";
         private const string ControllerDeadzoneKey = "Mindrift.Settings.ControllerDeadzone";
+        private const string ControllerVibrationEnabledKey = "Mindrift.Settings.ControllerVibrationEnabled";
+        private const string TinyWindowRecoveryDoneKey = "Mindrift.Settings.TinyWindowRecoveryDoneV1";
 
         private static readonly List<Resolution> AvailableResolutions = new List<Resolution>();
         private static bool initialized;
@@ -33,6 +39,7 @@ namespace Mindrift.UI
         public static float ControllerSensitivity { get; private set; } = 1f;
         public static bool InvertY { get; private set; }
         public static float ControllerDeadzone { get; private set; } = 0.08f;
+        public static bool ControllerVibrationEnabled { get; private set; } = true;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void Bootstrap()
@@ -154,6 +161,15 @@ namespace Mindrift.UI
             NotifyApplied();
         }
 
+        public static void SetControllerVibrationEnabled(bool enabled)
+        {
+            EnsureInitialized();
+            ControllerVibrationEnabled = enabled;
+            SaveInt(ControllerVibrationEnabledKey, enabled ? 1 : 0);
+            ApplyControllerSettings();
+            NotifyApplied();
+        }
+
         public static void ApplyAll()
         {
             EnsureInitialized();
@@ -161,6 +177,44 @@ namespace Mindrift.UI
             ApplyAudio();
             ApplyControllerSettings();
             NotifyApplied();
+        }
+
+        public static void RecoverFromTinyWindowIfNeeded()
+        {
+            EnsureInitialized();
+
+            if (PlayerPrefs.GetInt(TinyWindowRecoveryDoneKey, 0) != 0)
+            {
+                return;
+            }
+
+            bool changed = false;
+            const int minReadableWidth = 1280;
+            const int minReadableHeight = 720;
+
+            if (!Fullscreen && AvailableResolutions.Count > 0)
+            {
+                int safeIndex = Mathf.Clamp(ResolutionIndex, 0, AvailableResolutions.Count - 1);
+                Resolution current = AvailableResolutions[safeIndex];
+                if (current.width < minReadableWidth || current.height < minReadableHeight)
+                {
+                    int recoveredIndex = FindBestResolutionIndex(minReadableWidth, minReadableHeight);
+                    if (recoveredIndex >= 0 && recoveredIndex != ResolutionIndex)
+                    {
+                        ResolutionIndex = recoveredIndex;
+                        SaveInt(ResolutionIndexKey, ResolutionIndex);
+                        changed = true;
+                    }
+                }
+            }
+
+            SaveInt(TinyWindowRecoveryDoneKey, 1);
+
+            if (changed)
+            {
+                ApplyDisplay();
+                NotifyApplied();
+            }
         }
 
         private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -216,6 +270,7 @@ namespace Mindrift.UI
             ControllerSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(ControllerSensitivityKey, 1f), 0.4f, 2f);
             InvertY = PlayerPrefs.GetInt(InvertYKey, 0) != 0;
             ControllerDeadzone = Mathf.Clamp(PlayerPrefs.GetFloat(ControllerDeadzoneKey, 0.08f), 0f, 0.4f);
+            ControllerVibrationEnabled = PlayerPrefs.GetInt(ControllerVibrationEnabledKey, 1) != 0;
         }
 
         private static int FindCurrentResolutionIndex()
@@ -233,6 +288,52 @@ namespace Mindrift.UI
             }
 
             return Mathf.Max(AvailableResolutions.Count - 1, 0);
+        }
+
+        private static int FindBestResolutionIndex(int minWidth, int minHeight)
+        {
+            if (AvailableResolutions.Count == 0)
+            {
+                return -1;
+            }
+
+            int bestIndex = -1;
+            int bestArea = int.MaxValue;
+            for (int i = 0; i < AvailableResolutions.Count; i++)
+            {
+                Resolution res = AvailableResolutions[i];
+                if (res.width < minWidth || res.height < minHeight)
+                {
+                    continue;
+                }
+
+                int area = res.width * res.height;
+                if (area < bestArea)
+                {
+                    bestArea = area;
+                    bestIndex = i;
+                }
+            }
+
+            if (bestIndex >= 0)
+            {
+                return bestIndex;
+            }
+
+            int largestIndex = 0;
+            int largestArea = 0;
+            for (int i = 0; i < AvailableResolutions.Count; i++)
+            {
+                Resolution res = AvailableResolutions[i];
+                int area = res.width * res.height;
+                if (area > largestArea)
+                {
+                    largestArea = area;
+                    largestIndex = i;
+                }
+            }
+
+            return largestIndex;
         }
 
         private static void ApplyDisplay()
@@ -279,6 +380,13 @@ namespace Mindrift.UI
                     look.ApplyControllerOptions(ControllerSensitivity, InvertY, ControllerDeadzone);
                 }
             }
+
+#if ENABLE_INPUT_SYSTEM
+            if (!ControllerVibrationEnabled && Gamepad.current != null)
+            {
+                Gamepad.current.ResetHaptics();
+            }
+#endif
         }
 
         private static void SaveFloat(string key, float value)

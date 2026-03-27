@@ -44,7 +44,7 @@ namespace Mindrift.Online.Models
             };
         }
 
-        public void ApplyToLocalSettings()
+        public void ApplyToLocalSettings(bool applyDisplaySettings = false)
         {
             Sanitize();
             SettingsManager.SetMasterVolume(master_volume);
@@ -53,9 +53,13 @@ namespace Mindrift.Online.Models
             SettingsManager.SetControllerSensitivity(controller_sensitivity);
             SettingsManager.SetInvertY(invert_y);
             SettingsManager.SetControllerDeadzone(controller_deadzone);
-            SettingsManager.SetFullscreen(fullscreen);
-            SettingsManager.SetQualityIndex(quality_level);
-            SettingsManager.SetResolutionIndex(resolution_index);
+
+            if (applyDisplaySettings)
+            {
+                SettingsManager.SetFullscreen(fullscreen);
+                SettingsManager.SetQualityIndex(quality_level);
+                SettingsManager.SetResolutionIndex(resolution_index);
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 using UnityEngine;
 using Mindrift.Effects;
+using UnityEngine.SceneManagement;
 
 namespace Mindrift.Core
 {
@@ -53,6 +54,12 @@ namespace Mindrift.Core
 
         private void Start()
         {
+            if (IsMainMenuScene(SceneManager.GetActiveScene().name))
+            {
+                StopLoop();
+                return;
+            }
+
             if (playOnStart)
             {
                 EnsureLoopPlaying();
@@ -61,6 +68,12 @@ namespace Mindrift.Core
 
         public void EnsureLoopPlaying()
         {
+            if (IsMainMenuScene(SceneManager.GetActiveScene().name))
+            {
+                StopLoop();
+                return;
+            }
+
             if (masterLoopSource == null)
             {
                 return;
@@ -99,5 +112,24 @@ namespace Mindrift.Core
 
         public AudioSource MasterLoopSource => masterLoopSource;
         public AudioIntensityDriver AudioIntensityDriver => audioIntensityDriver;
+
+        private void StopLoop()
+        {
+            if (masterLoopSource == null)
+            {
+                return;
+            }
+
+            if (masterLoopSource.isPlaying)
+            {
+                masterLoopSource.Stop();
+            }
+        }
+
+        private static bool IsMainMenuScene(string sceneName)
+        {
+            return sceneName.Equals("MainMenu", System.StringComparison.OrdinalIgnoreCase) ||
+                   sceneName.Equals("MainMenue", System.StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

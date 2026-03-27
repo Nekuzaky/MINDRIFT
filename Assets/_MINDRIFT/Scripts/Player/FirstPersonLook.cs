@@ -1,4 +1,5 @@
 using UnityEngine;
+using Mindrift.UI;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -72,6 +73,12 @@ namespace Mindrift.Player
 
         private void Update()
         {
+            if (OptionsMenuController.IsAnyMenuOpen)
+            {
+                SetCursorLock(false);
+                return;
+            }
+
             bool unlockPressed = IsUnlockPressed();
             if (unlockPressed)
             {
